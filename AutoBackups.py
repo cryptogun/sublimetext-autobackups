@@ -432,33 +432,36 @@ class AutoBackupsGcBackup(threading.Thread):
 
 
     def run(self):
-        import datetime
         basedir = PathsHelper.get_base_dir(True)
-        backup_time = self.backup_time
-
-        if (backup_time < 1):
+        keeps = self.backup_time
+        if (keeps < 1):
             return
 
-        diff = (backup_time + 1) * 24 * 3600
-        deleted = 0
-        now_time = time.time()
-        for folder in os.listdir(basedir):
-            match = re.search(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$", folder)
-            if match is not None:
-                folder_time = time.mktime(datetime.datetime.strptime(folder, "%Y-%m-%d").timetuple())
-                if (now_time - folder_time > diff):
-                    fldr = basedir+'/'+folder
-                    try:
-                        shutil.rmtree(fldr, onerror=self.onerror)
-                        deleted = deleted + 1
-                    except Exception as e:
-                        cprint(e)
+        # get valid folders. e.g. 2000-00-00
+        valid_folders = []
+        valid_folders_count = 0
+        for f in os.listdir(basedir):
+            if bool(re.search(r'^\d{4}-\d{2}-\d{2}$', f)):
+                valid_folders.append(f)
+                valid_folders_count += 1
 
-        if (deleted > 0):
-            diff = backup_time * 24 * 3600
-            dt = now_time - diff
-            date = datetime.datetime.fromtimestamp(dt).strftime('%Y-%m-%d')
-            cprint('AutoBackups: Deleted '+str(deleted)+' backup folders older than '+date)
+        # delete if count(folders) > setting. Thus, shutdown days didn't count.
+        valid_folders = sorted(valid_folders)
+        if valid_folders_count > keeps:
+            deleted = 0
+            deletes = valid_folders_count - keeps
+            for i in range(deletes):
+                exceed_folder = basedir + '/' + valid_folders[i]
+                try:
+                    shutil.rmtree(exceed_folder, onerror=self.onerror)
+                    deleted += 1
+                except Exception as e:
+                    cprint(e)
+
+            if deleted > 0:
+                cprint('AutoBackups: Deleted %s backup folders and remain %s.' %
+                       (str(deleted), keeps))
+
 
 
     def onerror(self, func, path, exc_info):
